@@ -16,12 +16,13 @@ const pb = new PocketBase(PB_URL);
 
 export default function TasksClient({ initialTasks }: { initialTasks: Task[] }) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks || []);
+  const [command, setCommand] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    async function load() {
-      if (!initialTasks || initialTasks.length === 0) {
+    async function loadIfEmpty() {
+      if ((!initialTasks || initialTasks.length === 0) && mounted) {
         try {
           const recs = await pb.collection("tasks").getFullList();
           if (!mounted) return;
@@ -40,7 +41,7 @@ export default function TasksClient({ initialTasks }: { initialTasks: Task[] }) 
       }
     }
 
-    load();
+    loadIfEmpty();
 
     const handler = (e: any) => {
       const rec = {
@@ -64,19 +65,23 @@ export default function TasksClient({ initialTasks }: { initialTasks: Task[] }) 
       });
     };
 
-    const sub = pb.collection("tasks").subscribe("*", handler);
+    const commandHandler = (e: any) => {
+      if (e.action !== "update") return;
+      const { command, page } = e.record?.command || {};
+      setCommand(command || null);
+      console.log("Command event:", e.record?.command);
+    };
+
+    pb.collection("tasks").subscribe("*", handler);
+    pb.collection("command").subscribe("*", commandHandler);
 
     return () => {
       mounted = false;
       try {
         pb.collection("tasks").unsubscribe("*");
+        pb.collection("command").unsubscribe("*");
       } catch (err) {
         // ignore
-      }
-      if (sub && typeof sub === "object" && typeof sub.unsubscribe === "function") {
-        try {
-          sub.unsubscribe();
-        } catch {}
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,6 +89,8 @@ export default function TasksClient({ initialTasks }: { initialTasks: Task[] }) 
 
   return (
     <div>
+      <div>Command: {command}</div>
+      <br />
       {tasks.length === 0 ? (
         <p>No tasks found.</p>
       ) : (
